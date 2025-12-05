@@ -1,2 +1,2 @@
 # Preview
-![Animation](out.gif)
+![Animation](file_out.gif)
