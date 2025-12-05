@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <SDL3/SDL.h>
 #define STB_IMAGE_IMPLEMENTATION
@@ -185,9 +186,28 @@ void f_draw(t_quad q, uint32_t *pixels)
   }
 }
 
+void f_generate_frame(uint32_t *pixels, int frame, int width, int height)
+{
+  char header[256];
+  sprintf(header, "./debug/frame-%d.ppm", frame);
+  FILE *f = fopen(header, "wb");
+  fprintf(f, "P6\n%d %d \n255\n", width, height);
+  for (int r = 0; r < height; ++r)
+  {
+    for (int c = 0; c < width; ++c)
+    {
+      char red = pixels[r * width + c] >> 16;
+      char g = pixels[r * width + c] >> 8;
+      char b = pixels[r * width + c];
+      fwrite(&red, 1, 1, f);
+      fwrite(&g, 1, 1, f);
+      fwrite(&b, 1, 1, f);
+    }
+  }
+}
+
 int main()
 {
-
   data = stbi_load("./owl.jpg", &w, &h, 0, 3);
   if (!data)
   {
@@ -209,6 +229,9 @@ int main()
                                              SDL_TEXTUREACCESS_STREAMING, w, h);
 
   uint32_t *pixels = malloc(w * h * sizeof(uint32_t));
+  int divideCount  = 1;
+  bool render      = true;
+  int frame        = 0;
   while (true)
   {
     SDL_Event e;
@@ -226,35 +249,44 @@ int main()
 
       if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_J)
       {
-        for (int i = 0; i < 10; ++i)
+        for (int count = 0; count < divideCount; ++count)
         {
-
           worst = 0;
           f_max_deviation_quad(&root);
           f_divide(worst);
         }
-      }
-
-      for (int r = 0; r < h; ++r)
-      {
-        for (int c = 0; c < w; ++c)
+        if (divideCount < 1024)
         {
-
-          int channels = 3;
-          int color    = 0xff000000;
-
-          for (int i = 0; i < channels; ++i)
-          {
-            color |=
-                (data[r * w * channels + c * channels + i] << (8 * (2 - i)));
-          }
-
-          pixels[r * w + c] = color;
-          pixels[r * w + c] = root.color;
+          divideCount *= 2;
         }
+        render = true;
       }
 
-      f_draw(root, pixels);
+      if (render)
+      {
+        render = false;
+        for (int r = 0; r < h; ++r)
+        {
+          for (int c = 0; c < w; ++c)
+          {
+
+            int channels = 3;
+            int color    = 0xff000000;
+
+            for (int i = 0; i < channels; ++i)
+            {
+              color |=
+                  (data[r * w * channels + c * channels + i] << (8 * (2 - i)));
+            }
+
+            pixels[r * w + c] = color;
+            pixels[r * w + c] = root.color;
+          }
+        }
+
+        f_draw(root, pixels);
+        f_generate_frame(pixels, frame++, w, h);
+      }
 
       SDL_UpdateTexture(texture, 0, pixels, w * sizeof(uint32_t));
       SDL_RenderTexture(renderer, texture, 0, 0);
