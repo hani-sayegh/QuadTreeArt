@@ -7,5 +7,5 @@ Think of it as a simple quadtree-inspired image approximator.
 
 ## Built With
 - **C**
-- **Dependencies:** [SDL2](https://www.libsdl.org/) for rendering and window management, and [stb_image.h](https://github.com/nothings/stb) for image loading.
+- **Dependencies:** [SDL3](https://www.libsdl.org/) for rendering and window management, and [stb_image.h](https://github.com/nothings/stb) for image loading.
 
