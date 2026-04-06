@@ -27,28 +27,51 @@ typedef struct t_quad
   struct t_quad *br;
 } t_quad;
 
-int w = 900;
-int h = 500;
+int pic_x = 900;
+int pic_y = 500;
 
-unsigned char *data;
+unsigned char *pic_pixels;
 
 float f_quad_area(t_quad q)
 {
   return (q.y1 - q.y0) * (q.x1 - q.x0);
 }
 
+float scale    = 0;
+float window_x = 1920;
+float window_y = 1080;
+int f_window_pos_to_pic_pos(int win_x, int win_y)
+{
+
+  float empty_pixels = (1.0 - (1.0 / scale)) / 2.0;
+  float u            = (float)win_x / (window_x - 1);
+  u -= empty_pixels;
+
+  u *= scale;
+  if (u > 1.0 || u < 0)
+  {
+    return -1;
+  }
+  float v = (float)win_y / (window_y - 1);
+
+  int ix = (int)(u * (pic_x - 1));
+  int iy = (int)(v * (pic_y - 1));
+
+  return iy * pic_x + ix;
+}
+
 void f_calculate_mean(t_quad *q)
 {
   uint32_t histogram[256 * 3] = {};
 
-  for (uint32_t r = q->y0; r < q->y1; ++r)
+  for (uint32_t x = q->x0; x < q->x1; ++x)
   {
-    for (uint32_t c = q->x0; c < q->x1; ++c)
+    for (uint32_t y = q->y0; y < q->y1; ++y)
     {
       for (int i = 0; i < 3; ++i)
       {
-        uint32_t offset = r * w * 3 + c * 3 + i;
-        ++histogram[data[offset] + (256 * i)];
+        uint32_t offset = f_window_pos_to_pic_pos(x, y) * 3 + i;
+        ++histogram[pic_pixels[offset] + (256 * i)];
       }
     }
   }
@@ -152,41 +175,55 @@ void f_divide(t_quad *curr)
   }
 }
 
-void f_draw(t_quad q, uint32_t *pixels)
+void f_draw(t_quad q, uint32_t *win_pixels)
 {
   uint32_t midx = q.x0 + (q.x1 - q.x0) / 2;
   uint32_t midy = q.y0 + (q.y1 - q.y0) / 2;
 
   if (q.tl)
   {
-    f_draw(*q.tl, pixels);
-    f_draw(*q.tr, pixels);
-    f_draw(*q.bl, pixels);
-    f_draw(*q.br, pixels);
+    f_draw(*q.tl, win_pixels);
+    f_draw(*q.tr, win_pixels);
+    f_draw(*q.bl, win_pixels);
+    f_draw(*q.br, win_pixels);
 
     for (uint32_t c = q.x0; c < q.x1; ++c)
     {
-      pixels[midy * w + c] = 0xff000000;
+      win_pixels[midy * (int)window_x + c] = 0xff000000;
     }
 
     for (uint32_t r = q.y0; r < q.y1; ++r)
     {
-      pixels[r * w + midx] = 0xff000000;
+      win_pixels[r * (int)window_x + midx] = 0xff000000;
     }
   }
   else
   {
-    for (uint32_t r = q.y0; r < q.y1; ++r)
+    for (uint32_t x = q.x0; x < q.x1; ++x)
     {
-      for (uint32_t c = q.x0; c < q.x1; ++c)
+      for (uint32_t y = q.y0; y < q.y1; ++y)
       {
-        pixels[r * w + c] = q.color;
+        int pos = f_window_pos_to_pic_pos(x, y);
+        if (pos == -1.0)
+        {
+          break;
+        }
+
+        uint32_t color = 0xff000000;
+        for (int i = 0; i < 3; ++i)
+        {
+          uint32_t offset = pos * 3 + i;
+          color <<= 8;
+          color |= (pic_pixels[offset]);
+        }
+        color |= 0xff000000;
+        win_pixels[(int)(y * window_x + x)] = color;
       }
     }
   }
 }
 
-void f_generate_frame(uint32_t *pixels, int frame, int width, int height)
+void f_generate_frame(uint32_t *win_pixels, int frame, int width, int height)
 {
   char header[256];
   sprintf(header, "./debug/frame-%d.ppm", frame);
@@ -196,9 +233,9 @@ void f_generate_frame(uint32_t *pixels, int frame, int width, int height)
   {
     for (int c = 0; c < width; ++c)
     {
-      char red = pixels[r * width + c] >> 16;
-      char g = pixels[r * width + c] >> 8;
-      char b = pixels[r * width + c];
+      char red = win_pixels[r * width + c] >> 16;
+      char g   = win_pixels[r * width + c] >> 8;
+      char b   = win_pixels[r * width + c];
       fwrite(&red, 1, 1, f);
       fwrite(&g, 1, 1, f);
       fwrite(&b, 1, 1, f);
@@ -206,10 +243,28 @@ void f_generate_frame(uint32_t *pixels, int frame, int width, int height)
   }
 }
 
+#define _(x) #x, x
+#define dbg(x)                                                                 \
+  _Generic((x),                                                                \
+      float: printf(#x ": %f \n", x),                                          \
+      default: printf("unknown type\n"))
+
 int main()
 {
-  data = stbi_load("./owl.jpg", &w, &h, 0, 3);
-  if (!data)
+  pic_pixels = stbi_load("./jin_pic.jpg", &pic_x, &pic_y, 0, 3);
+
+  printf("%s: %d %s: %d\n", _(pic_x), _(pic_y));
+
+  window_x = 1000;
+  window_y = 500;
+
+  // aspect ration fix
+  scale = (float)window_x / window_y;
+  // hani todo why this is not wokring?
+  // scale /= (float)pic_x / pic_y;
+  dbg(scale);
+
+  if (!pic_pixels)
   {
     printf("Failed to load image: %s\n", stbi_failure_reason());
     exit(0);
@@ -218,20 +273,21 @@ int main()
   t_quad root = {};
   root.x0     = 0;
   root.y0     = 0;
-  root.x1     = w;
-  root.y1     = h;
-  f_calculate_mean(&root);
+  root.x1     = window_x;
+  root.y1     = window_y;
+  // f_calculate_mean(&root);
 
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
-  SDL_Window *window     = SDL_CreateWindow("Hello", w, h, 0);
+  SDL_Window *window     = SDL_CreateWindow("Hello", window_x, window_y, 0);
   SDL_Renderer *renderer = SDL_CreateRenderer(window, 0);
-  SDL_Texture *texture   = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
-                                             SDL_TEXTUREACCESS_STREAMING, w, h);
+  SDL_Texture *texture =
+      SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                        SDL_TEXTUREACCESS_STREAMING, window_x, window_y);
 
-  uint32_t *pixels = malloc(w * h * sizeof(uint32_t));
-  int divideCount  = 1;
-  bool render      = true;
-  int frame        = 0;
+  uint32_t *win_pixels = malloc(window_x * window_y * sizeof(uint32_t));
+  int divideCount      = 1;
+  bool render          = true;
+  int frame            = 0;
   while (true)
   {
     SDL_Event e;
@@ -249,6 +305,7 @@ int main()
 
       if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_J)
       {
+        // exponential divide
         for (int count = 0; count < divideCount; ++count)
         {
           worst = 0;
@@ -264,31 +321,11 @@ int main()
 
       if (render)
       {
-        render = false;
-        for (int r = 0; r < h; ++r)
-        {
-          for (int c = 0; c < w; ++c)
-          {
-
-            int channels = 3;
-            int color    = 0xff000000;
-
-            for (int i = 0; i < channels; ++i)
-            {
-              color |=
-                  (data[r * w * channels + c * channels + i] << (8 * (2 - i)));
-            }
-
-            pixels[r * w + c] = color;
-            pixels[r * w + c] = root.color;
-          }
-        }
-
-        f_draw(root, pixels);
-        f_generate_frame(pixels, frame++, w, h);
+        f_draw(root, win_pixels);
+        // f_generate_frame(win_pixels, frame++, pic_x, pic_y);
       }
 
-      SDL_UpdateTexture(texture, 0, pixels, w * sizeof(uint32_t));
+      SDL_UpdateTexture(texture, 0, win_pixels, window_x * sizeof(uint32_t));
       SDL_RenderTexture(renderer, texture, 0, 0);
       SDL_RenderPresent(renderer);
     }
