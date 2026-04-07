@@ -40,19 +40,62 @@ float f_quad_area(t_quad q)
 float scale    = 0;
 float window_x = 1920;
 float window_y = 1080;
+
+typedef struct
+{
+  int x;
+  int y;
+} Vec2;
+
+Vec2 f_start_x()
+{
+  float p_shown     = 1. / scale;
+  float p_shown_not = 1. - p_shown;
+  int start         = p_shown_not / 2 * (window_x) + 1;
+  return (Vec2){start, start + p_shown * window_x};
+}
+
+Vec2 f_start_y()
+{
+  float p_shown     = scale;
+  float p_shown_not = 1. - p_shown;
+  int start         = p_shown_not / 2 * (window_y);
+  return (Vec2){start, start + p_shown * window_y};
+}
+
+#define dbg(x)                                                                 \
+  _Generic((x),                                                                \
+      float: printf(#x ": %f \n", x),                                          \
+      default: printf("unknown type\n"))
 int f_window_pos_to_pic_pos(int win_x, int win_y)
 {
-
-  float empty_pixels = (1.0 - (1.0 / scale)) / 2.0;
-  float u            = (float)win_x / (window_x - 1);
-  u -= empty_pixels;
-
-  u *= scale;
-  if (u > 1.0 || u < 0)
-  {
-    return -1;
-  }
+  // mark  f_window_pos_to_pic_pos
+  float u = (float)win_x / (window_x - 1);
   float v = (float)win_y / (window_y - 1);
+  if (scale >= 1.0)
+  {
+    float p_shown     = 1. / scale;
+    float p_shown_not = 1. - p_shown;
+    u -= p_shown_not / 2;
+    u *= scale;
+
+    if (u > 1.0 || u < 0)
+    {
+      return -1;
+    }
+  }
+  else
+  {
+    float yScale      = 1. / scale;
+    float p_shown     = scale;
+    float p_shown_not = 1.0 - p_shown;
+    v -= p_shown_not / 2.;
+    v *= yScale;
+    if (v > 1.0 || v < 0)
+    {
+      return -1;
+    }
+  }
 
   int ix = (int)(u * (pic_x - 1));
   int iy = (int)(v * (pic_y - 1));
@@ -70,8 +113,11 @@ void f_calculate_mean(t_quad *q)
     {
       for (int i = 0; i < 3; ++i)
       {
-        uint32_t offset = f_window_pos_to_pic_pos(x, y) * 3 + i;
-        ++histogram[pic_pixels[offset] + (256 * i)];
+        int offset = f_window_pos_to_pic_pos(x, y) * 3 + i;
+        if (offset != -1)
+        {
+          ++histogram[pic_pixels[offset] + (256 * i)];
+        }
       }
     }
   }
@@ -119,7 +165,8 @@ void f_max_deviation_quad(t_quad *curr)
     f_max_deviation_quad(curr->bl);
     f_max_deviation_quad(curr->br);
   }
-  else if (worst == 0 || curr->standard_deviation > (worst)->standard_deviation)
+  else if (worst == NULL ||
+           curr->standard_deviation > (worst)->standard_deviation)
   {
     worst = curr;
   }
@@ -182,6 +229,7 @@ void f_draw(t_quad q, uint32_t *win_pixels)
 
   if (q.tl)
   {
+    // mark draw black line
     f_draw(*q.tl, win_pixels);
     f_draw(*q.tr, win_pixels);
     f_draw(*q.bl, win_pixels);
@@ -217,7 +265,8 @@ void f_draw(t_quad q, uint32_t *win_pixels)
           color |= (pic_pixels[offset]);
         }
         color |= 0xff000000;
-        win_pixels[(int)(y * window_x + x)] = color;
+        // win_pixels[(int)(y * window_x + x)] = color;
+        win_pixels[(int)(y * window_x + x)] = q.color;
       }
     }
   }
@@ -244,24 +293,19 @@ void f_generate_frame(uint32_t *win_pixels, int frame, int width, int height)
 }
 
 #define _(x) #x, x
-#define dbg(x)                                                                 \
-  _Generic((x),                                                                \
-      float: printf(#x ": %f \n", x),                                          \
-      default: printf("unknown type\n"))
 
 int main()
 {
-  pic_pixels = stbi_load("./jin_pic.jpg", &pic_x, &pic_y, 0, 3);
+  pic_pixels = stbi_load("./in_pic.jpg", &pic_x, &pic_y, 0, 3);
 
   printf("%s: %d %s: %d\n", _(pic_x), _(pic_y));
 
-  window_x = 1000;
-  window_y = 500;
+  // mark window size
+  window_x = 640;
+  window_y = 640;
 
-  // aspect ration fix
   scale = (float)window_x / window_y;
-  // hani todo why this is not wokring?
-  // scale /= (float)pic_x / pic_y;
+  scale /= (float)pic_x / pic_y;
   dbg(scale);
 
   if (!pic_pixels)
@@ -271,10 +315,22 @@ int main()
   }
 
   t_quad root = {};
+  Vec2 start  = scale < 1.0 ? f_start_y() : f_start_x();
   root.x0     = 0;
   root.y0     = 0;
   root.x1     = window_x;
   root.y1     = window_y;
+  if (scale < 1.0)
+  {
+    root.y0 = start.x;
+    root.y1 = start.y;
+  }
+  else
+  {
+    root.x0 = start.x;
+    root.x1 = start.y;
+  }
+
   // f_calculate_mean(&root);
 
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
@@ -308,7 +364,7 @@ int main()
         // exponential divide
         for (int count = 0; count < divideCount; ++count)
         {
-          worst = 0;
+          worst = NULL;
           f_max_deviation_quad(&root);
           f_divide(worst);
         }
