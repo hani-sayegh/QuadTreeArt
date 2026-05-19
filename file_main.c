@@ -235,15 +235,15 @@ void f_draw(t_quad q, uint32_t *win_pixels)
     f_draw(*q.bl, win_pixels);
     f_draw(*q.br, win_pixels);
 
-    for (uint32_t c = q.x0; c < q.x1; ++c)
-    {
-      win_pixels[midy * (int)window_x + c] = 0xff000000;
-    }
-
-    for (uint32_t r = q.y0; r < q.y1; ++r)
-    {
-      win_pixels[r * (int)window_x + midx] = 0xff000000;
-    }
+    // for (uint32_t c = q.x0; c < q.x1; ++c)
+    // {
+    //   win_pixels[midy * (int)window_x + c] = 0xff000000;
+    // }
+    //
+    // for (uint32_t r = q.y0; r < q.y1; ++r)
+    // {
+    //   win_pixels[r * (int)window_x + midx] = 0xff000000;
+    // }
   }
   else
   {
@@ -378,7 +378,7 @@ int main()
       if (render)
       {
         f_draw(root, win_pixels);
-        // f_generate_frame(win_pixels, frame++, pic_x, pic_y);
+        f_generate_frame(win_pixels, frame++, window_x, window_y);
       }
 
       SDL_UpdateTexture(texture, 0, win_pixels, window_x * sizeof(uint32_t));
